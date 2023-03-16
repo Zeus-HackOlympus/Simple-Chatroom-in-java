@@ -5,8 +5,9 @@
 
 */
 
+import java.io.Console;
+import java.util.*; 
 import java.sql.*;
-import java.util.ArrayList; 
 
 public class Database {
     
@@ -18,20 +19,17 @@ public class Database {
     private Statement stmt;
     private ResultSet rs;
 
-    public Database(String url, String username, String password) {
-        this.url = url;
-        this.username = username; 
-        this.password = password;
-        
-        
+    public Database() {
+
+        loginDatabase();
+
         try {
-            conn = DriverManager.getConnection(url, username, password);
             stmt = conn.createStatement() ;
             // users table - to contain username/password combination
             String sql = "CREATE TABLE IF NOT EXISTS users" + 
                          "(id SERIAL PRIMARY KEY," + 
-                         " username VARCHAR(50) NOT NULL UNIQUE," + 
-                         " password VARCHAR(50) NOT NULL)";
+                         " username VARCHAR(60) NOT NULL UNIQUE," + 
+                         " password VARCHAR(60) NOT NULL)";
 
             stmt.executeUpdate(sql);
             System.out.println("Users table initiated"); 
@@ -39,29 +37,29 @@ public class Database {
             // rooms table - to contain room name
             sql = "CREATE TABLE IF NOT EXISTS rooms" + 
                   "(id SERIAL PRIMARY KEY," + 
-                  " name VARCHAR(50) NOT NULL UNIQUE)"; 
+                  " name VARCHAR(60) NOT NULL UNIQUE)"; 
             stmt.executeUpdate(sql);
             System.out.println("rooms table initiated"); 
 
             // room_users table - to contain users present in room 
             sql = "CREATE TABLE IF NOT EXISTS room_users" + 
-                  "(room_id INTEGER NOT NULL," +
-                  " user_id INTEGER NOT NULL," + 
+                  "(room_id VARCHAR(60) NOT NULL," +
+                  " user_id VARCHAR(60) NOT NULL," + 
                   " PRIMARY KEY (room_id, user_id)," + 
-                  " FOREIGN KEY (room_id) REFERENCES rooms(id)," + 
-                  " FOREIGN KEY (user_id) REFERENCES users(id))";
+                  " FOREIGN KEY (room_id) REFERENCES rooms(name)," + 
+                  " FOREIGN KEY (user_id) REFERENCES users(username))";
             stmt.executeUpdate(sql);
             System.out.println("room_users table initiated"); 
             
             // Create messages table - to contain new msgs
             sql = "CREATE TABLE IF NOT EXISTS messages" + 
                   "(id SERIAL PRIMARY KEY," + 
-                  " room_id INTEGER NOT NULL," +
-                  " user_id INTEGER NOT NULL," + 
+                  " room_id VARCHAR(60) NOT NULL," +
+                  " user_id VARCHAR(60) NOT NULL," + 
                   " message VARCHAR(255) NOT NULL," +
                   " created_at TIMESTAMP DEFAULT NOW()," + 
-                  " FOREIGN KEY (room_id) REFERENCES rooms(id)," + 
-                  " FOREIGN KEY (user_id) REFERENCES users(id))";
+                  " FOREIGN KEY (room_id) REFERENCES rooms(name)," + 
+                  " FOREIGN KEY (user_id) REFERENCES users(username))";
             stmt.executeUpdate(sql);
             System.out.println("messages table initiated"); 
 
@@ -70,6 +68,25 @@ public class Database {
         }
 
     } 
+
+    public void loginDatabase() {
+        try {
+            Scanner in = new Scanner(System.in);
+            Console console = System.console();
+            this.url = "jdbc:postgresql://localhost:5432/mydb"; 
+            
+            System.out.print("Database username: ");
+            this.username = in.nextLine();
+    
+            char[] pass = console.readPassword("Database password: ");
+            this.password = new String(pass); 
+            
+            this.conn = DriverManager.getConnection(this.url, this.username, this.password);
+        } catch (SQLException e) {
+            System.out.println("Login failed: " + e.getMessage());
+            loginDatabase();
+        }
+    }
 
     public boolean registerUser(String username, String password) {
         String sql = "INSERT INTO users (username, password) VALUES (?, ?)";
@@ -163,31 +180,61 @@ public class Database {
     }
 
     public boolean joinRoom(String roomName, String username) {
-        String sql = "INSERT INTO rooms_users (room_name, username) VALUES (?, ?)";
+        String checkRoomSql = "SELECT id FROM rooms WHERE name=?";
+        String sql = "INSERT INTO room_users (room_id, user_id) VALUES (?, ?)";
 
         try {
-            PreparedStatement pstmt = conn.prepareStatement(sql);
+            PreparedStatement pstmt = conn.prepareStatement(checkRoomSql);
+            pstmt.setString(1, roomName);
+            ResultSet rs = pstmt.executeQuery();
+
+            // check if room exists or not 
+            if (!rs.next()) {
+                // if not then create room
+                if (!createRoom(roomName)) {
+                    System.out.println("Error creating room");
+                    return false;
+                }
+            }
+
+            pstmt = conn.prepareStatement(sql);
             pstmt.setString(1, roomName);
             pstmt.setString(2, username); 
             pstmt.executeUpdate();
             System.out.println("User joined room successfully");
-            return true;
+            return true; 
         } catch (SQLException e) {
             System.out.println("Error joining room: " + e.getMessage());
         }
+        
         return false;
+    }
+    
+    public void sendMessage(String roomName, String username,String message) {
+        String sql = "INSERT INTO messages (room_id, user_id, message) VALUES (?, ?, ?)";
+        
+        try {
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, roomName);
+            pstmt.setString(2, username);
+            pstmt.setString(3, message);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("Error sending message: " + e.getMessage());
+        }
+
     }
 
     public ArrayList<String> getChatHistory(String roomName) {
         ArrayList<String> chatHistory = new ArrayList<>();
-        String sql = "SELECT username, message FROM messages WHERE room_name = ? ORDER BY id DESC LIMIT 20";
+        String sql = "SELECT user_id, message FROM messages WHERE room_id = ? ORDER BY id DESC LIMIT 20";
         
         try {
             PreparedStatement pstmt = conn.prepareStatement(sql);
             pstmt.setString(1, roomName);
             rs = pstmt.executeQuery();
             while (rs.next()) {
-                String message = rs.getString("username") + ": " + rs.getString("message");
+                String message = rs.getString("user_id") + ": " + rs.getString("message");
                 chatHistory.add(message);
             }
         } catch (SQLException e) {
@@ -195,6 +242,48 @@ public class Database {
         }
         
         return chatHistory;
+    }
+
+    public ArrayList<String> getUserList(String roomName) {
+        ArrayList<String> userList = new ArrayList<>();
+        String sql = "SELECT user_id from room_users WHERE room_id = ? ORDER BY user_id";
+
+        try {
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, roomName); 
+            rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                String username = rs.getString("user_id");
+                userList.add(username);
+            }
+        } catch (SQLException e) {
+            System.out.println("Error getting list of users: " + e.getMessage());
+        }
+
+        return userList;
+    }
+    
+    public boolean leaveChatRoom(String roomName, String username) {
+        String sql = "DELETE FROM room_users WHERE room_id=? AND user_id=?"; 
+        
+        try {
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, roomName);
+            pstmt.setString(2, username);
+            int numRowsDeleted = pstmt.executeUpdate();
+
+            if (numRowsDeleted > 0) {
+                System.out.println("User left room successfully");
+                return true;
+            } else {
+                System.out.println("User was not found in the room");
+            }
+        } catch (SQLException e) {
+            System.out.println("Error leaving room: " + e.getMessage());
+        }
+        
+        return false;
     }
 
     public void closeConnection() {

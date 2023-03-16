@@ -70,25 +70,15 @@ public class Main
         } else {
             System.out.println("Incorrect username/password");
             this.username = null;
-            return false;
+            login();
         }
+        return false;
     }
 
     
 
     public static void main(String[] args) {
-        Scanner in = new Scanner(System.in);
-        Console console = System.console();
-
-        String url = "jdbc:postgresql://localhost:5432/mydb"; 
-        
-        System.out.print("Database username: ");
-        String username = in.nextLine();
-
-        char[] pass = console.readPassword("Database password: ");
-        String password = new String(pass); 
-
-        Database data = new Database(url, username, password);
+        Database data = new Database();
         Main program = new Main(data);
         program.start();
         data.closeConnection();

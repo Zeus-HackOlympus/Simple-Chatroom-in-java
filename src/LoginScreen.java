@@ -29,13 +29,21 @@ public class LoginScreen
 
         switch (Character.toLowerCase(arg[0].charAt(0))) {
             case 'j':
-                join(arg[1]);
+                if (arg.length > 1) {
+                    join(arg[1]);
+                } else {
+                    System.out.println("Please provide room name\n");
+                }
                 break;
             case 'c':
-                Pattern pattern = Pattern.compile("^[a-z0-9]+$");
-                Matcher matcher = pattern.matcher(arg[1]); 
-                if (matcher.matches()) {
-                    create(arg[1]);
+                if (arg.length > 1) {
+                    Pattern pattern = Pattern.compile("^[a-z0-9]+$");
+                    Matcher matcher = pattern.matcher(arg[1]); 
+                    if (matcher.matches()) {
+                        create(arg[1]);
+                    }
+                } else {
+                    System.out.println("Please provide room name\n");
                 }
                 break;
             case 'a':
@@ -57,10 +65,12 @@ public class LoginScreen
     }
 
     public boolean join(String roomName) {
-        boolean result = db.joinRoom(roomName, this.username);  
-        Room room = new Room(roomName);
-        room.init();
-        return result;
+        boolean result = db.joinRoom(roomName, this.username);
+        if (result) { 
+            Room room = new Room(db, roomName, this.username);
+            room.enter();
+        }
+        return result; 
     }
 
     public void account() {
@@ -70,10 +80,13 @@ public class LoginScreen
         int inp = in.nextInt();
 
         if (inp == 1) {
+            in.next(); // for flushing input
             changeUsername();
         } else if (inp == 2) {
+            in.next();
             changePassword();
         } else if (inp == 3) {
+            in.next();
             menu(); // go back to menu
         } else {
             System.out.println("Please select a valid option");
@@ -81,10 +94,17 @@ public class LoginScreen
         }
     }
 
-    public boolean changeUsername() { 
+    public void changeUsername() { 
         System.out.print("Enter new username: ");
         String newUsername = in.nextLine();
-        return db.changeUsername(this.username, newUsername);
+        Pattern pattern = Pattern.compile("^[a-z0-9]+$");
+        Matcher matcher = pattern.matcher(newUsername); 
+        if (matcher.matches()) {
+            db.changeUsername(this.username, newUsername);
+        } else {
+            System.out.println("Enter valid username. A valid username only contains lowercase letter and numbers");
+            changeUsername();
+        }
     }
 
     public boolean changePassword() {
